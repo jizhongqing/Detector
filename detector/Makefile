@@ -17,7 +17,7 @@ DEFINES+= -I$(SRC_PATH)/shared/xed2/xed2-ia32/include
 endif
 
 OBJS=../shared/procmod.o ../shared/read_linux.o ../shared/hookapi.o ../shared/hooks/function_map.o ../shared/reduce_taint.o
-OBJS+=detector.o thread_info.o
+OBJS+=detector.o thread_info.o trace.o
 
 PLUGIN = detector.so
 
