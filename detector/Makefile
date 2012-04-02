@@ -24,7 +24,7 @@ PLUGIN = detector.so
 all: $(PLUGIN)
 
 %.o: %.c 
-	gcc $(CFLAGS) $(DEFINES) -c -o $@ $<
+	gcc -std=c99 $(CFLAGS) $(DEFINES) -c -o $@ $<
 
 %.o: %.cpp
 	g++ $(CFLAGS) $(DEFINES) -c -o $@ $<

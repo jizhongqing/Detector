@@ -23,7 +23,25 @@
 #include <sys/user.h>
 #include <sys/time.h>
 
-extern FILE * tracelog = NULL;
+// TEMU headers
+#include <TEMU_lib.h>
+#include <slirp/slirp.h>
+#include <shared/procmod.h>
+#include <shared/hookapi.h>
+#include <shared/read_linux.h>
+#include <shared/reduce_taint.h>
+#include <shared/hooks/reg_ids.h>
+#include <shared/hooks/function_map.h>
+
+// Local headers
+#include "trace.h"
+#include "thread_info.hpp"
+
+//! Multi-thread, get from Hookfinder
+thread_info_t * current_thread_node = NULL;
+
+//! Handle to the trace file
+FILE * tracelog = NULL;
 
 void prepare_trace_record(trace_record_t * trec)
 {

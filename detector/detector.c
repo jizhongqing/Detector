@@ -24,13 +24,13 @@
 #include <inttypes.h>
 
 // Temu headers
-#include <config.h>
 #include <TEMU_lib.h>
 #include <slirp/slirp.h>
 #include <shared/procmod.h>
 #include <shared/hookapi.h>
 #include <shared/read_linux.h>
 #include <shared/reduce_taint.h>
+#include <shared/hooks/reg_ids.h>
 #include <shared/hooks/function_map.h>
 #include <xed-interface.h>
 
@@ -68,6 +68,11 @@ FILE * loghandle		= NULL;
 //! Name of the queue log
 char const * logfile	= "detector.log";
 
+//! Handle to the instruction sequence file
+FILE * inshandle		= NULL;
+//! Name of the instruction sequence file
+char const * insfile	= "instructions.log";
+
 //! This is the main interface of a plugin
 static plugin_interface_t interface;
 
@@ -81,7 +86,7 @@ uint32_t checked_module_size = 0;
 //! Multi-thread, get from Hookfinder
 uint32_t current_thread_id = 0;
 //! Multi-thread, get from Hookfinder
-extern thread_info_t * current_thread_node = NULL;
+thread_info_t * current_thread_node = NULL;
 
 //! Address of the next-to-last instruction, get from Hookfinder
 uint32_t last_eip = 0;
@@ -91,6 +96,9 @@ int taint_sendkey_id = 0;
 
 //! Still don't know what it is
 uint32_t depend_id = 1;
+
+//! Handle to the trace file
+FILE * tracelog = NULL;
 
 //! Save the name of the requested module, prepare to monitor it
 void do_start_check(char const * name)
@@ -161,12 +169,9 @@ void detector_taint_propagate(	int nr_src,
 								int mode	)
 {
 	taint_record_t *taint_record = NULL;
-
-  taint_record_t *tmp_rec;
-
 	// The trace will be stored nyaa
 	trace_record_t trace_rec;
-
+	// Which index are they ?
   	int src_index = 0, dst_index = 0;
 
 	// Prepare the record if the trace is on
@@ -220,50 +225,48 @@ void detector_taint_propagate(	int nr_src,
 		}
 	}
 
-  /* deal with multiple sources */
-  if (tracelog)
-    trace_rec.prop.is_move = 0;
+	// Deal with multiple sources
+	if (tracelog) {
+    	trace_rec.prop.is_move = 0;
+	}
 
-  for (i = 0; i < nr_src; i++) {
-    if (src_oprnds[i].taint == 0)
-      continue;
+	for (int i = 0; i < nr_src; ++i) {
+		if (src_oprnds[ i ].taint == 0) { continue; }
 
-    for (j = 0; j < src_oprnds[i].size; j++)
-      if (src_oprnds[i].taint & (1 << j)) {
-        tmp_rec = (taint_record_t *) src_oprnds[i].records + j;
-        if (!taint_record) {
-          taint_record = tmp_rec;
-          if (!tracelog)
-            goto copy_taint_record;
-        }
+		for (int j = 0; j < src_oprnds[ i ].size; ++j) {
+      		if (src_oprnds[ i ].taint & (1 << j)) {
+				taint_record_t * tmp = (taint_record_t *) src_oprnds[ i ].records + j;
 
-        if (tracelog)
-          trace_rec.prop.src_id[src_index++] = tmp_rec->depend_id;
-      }
-  }
+				if (! taint_record) {
+					taint_record = tmp;
+					// Dump the record
+					if (! tracelog) { goto _copy; }
+        		}
 
-  if (!taint_record)
-    return;
+				if (tracelog) {
+					trace_rec.prop.src_id[ src_index++ ] = tmp->depend_id;
+				}
+      		}
+  		}
+	}
 
-copy_taint_record:
+	// There is no tainted record
+	if (! taint_record) { return; }
 
-  for (i = 0; i < dst_oprnd->size; i++) {
-    dst_rec = (taint_record_t *) dst_oprnd->records + i;
-    memmove(dst_rec, taint_record, sizeof(taint_record_t));
-    dst_rec->depend_id = cur_depend_id++;
-    if (tracelog) {
-      trace_rec.prop.dst_id[dst_index++] = dst_rec->depend_id;
-    }
-  }
+_copy:
 
-  if (tracelog) {
-    /*if(dst_oprnd->type == 0) {
-       trace_rec.prop.dst_reg = dst_oprnd->addr>>2;
-       trace_rec.prop.dst_val = TEMU_cpu_regs[trace_rec.prop.dst_reg];
-       } */
-    write_trace(&trace_rec);
-  }
+	for (int i = 0; i < dst_oprnd->size; ++i) {
+		taint_record_t * dst_rec = (taint_record_t *) dst_oprnd->records + i;
+		memmove(dst_rec, taint_record, sizeof(taint_record_t));
 
+		dst_rec->depend_id = depend_id++;
+
+		if (tracelog) {
+			trace_rec.prop.dst_id[ dst_index++ ] = dst_rec->depend_id;
+		}
+	}
+
+	if (tracelog) { write_trace(&trace_rec); }
 
 	// Do nothing, just use the default policy
 	default_taint_propagate(nr_src, src_oprnds, dst_oprnd, mode);
@@ -431,6 +434,53 @@ static void detector_insn_begin()
 	last_eip = eip;
 	// and get the next one
 	TEMU_read_register(eip_reg, &eip);
+
+	uint8_t raw_insn[16];
+	// Fetch the raw instruction
+	TEMU_read_mem(eip, 16, raw_insn);
+}
+
+//! Print the trace record in human readable format
+void print_trace_record(trace_record_t * rec)
+{
+	// XED decoder handle
+	xed_decoded_inst_t xdecode;
+
+	/*
+	if (rec->is_new) {
+		// What is new ?
+		fprintf(	inshandle,
+					"[new] eip=%08x esp=%08x caller=%08x callee=%08x M[%08x]=%08x\n",
+					rec->eip, rec->esp,
+					rec->caller, rec->callee,
+					rec->mem_addr, rec->mem_val	);
+	} else {
+		// Sure, i know things are old if they are not new
+		fprintf(	inshandle,
+					"[old] eip=%08x esp=%08x caller=%08x callee=%08x is_move=%d\n",
+					rec->eip, rec->esp,
+					rec->caller, rec->callee,
+					rec->prop.is_move	);
+
+		if (rec->mem_addr) {
+			printf("    M[%08x]=%08x\n", rec->mem_addr, rec->mem_val);
+		}
+	}
+	*/
+
+	// The human-readable string will be stored nyaa
+	char asm_buf[32];
+
+	xed_decoded_inst_zero_set_mode(&xdecode, &xed_state);
+	// Convert to human-readable format using XED
+	xed_error_enum_t xed_error = xed_decode(&xdecode, rec->raw_insn, 16);
+	// Correct instruction
+	if (xed_error == XED_ERROR_NONE) {
+		// Convert to intel format (or AT/T)
+		xed_format_intel(&xdecode, asm_buf, sizeof(asm_buf), rec->eip);
+		// Dump the string
+		printf("%s\n", asm_buf);
+	}
 }
 
 //! Cleanup
@@ -444,8 +494,13 @@ void detector_cleanup()
 
 	// Close the log file
 	fclose(loghandle);
-	// Reload ?
+	// Reload
 	loghandle = NULL;
+
+	// Close the instruction sequence
+	fclose(inshandle);
+	// Reload
+	inshandle = NULL;
 }
 
 //! Standard callback function - Initialize the plugin interface
@@ -454,6 +509,12 @@ plugin_interface_t * init_plugin()
 	// Fail to create the plugin log
 	if (!(loghandle = fopen(logfile, "w"))) {
 		fprintf(stderr, "cannot create %s\n", logfile);
+		return NULL;
+	}
+
+	// Fail to create the instruction log
+	if (!(inshandle = fopen(insfile, "w"))) {
+		fprintf(stderr, "cannot create %s\n", insfile);
 		return NULL;
 	}
 
