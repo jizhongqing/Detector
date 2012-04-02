@@ -1,1 +1,0 @@
-/home/salem/Sources/temu-1.0/Makefile.target
