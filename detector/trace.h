@@ -1,5 +1,23 @@
-#ifndef TRACING_H_INCLUDED
-#define TRACING_H_INCLUDED
+/*
+ * =====================================================================================
+ *
+ *       Filename:  trace.h
+ *
+ *    Description:	Trace, copied from Hookfinder
+ *
+ *        Version:  1.0
+ *        Created:  04/02/2012 05:07:26 PM
+ *       Revision:  none
+ *       Compiler:  gcc
+ *
+ *         Author:  Do Hoang Nhat Huy
+ *        Company:
+ *
+ * =====================================================================================
+ */
+
+#ifndef TRACING_INC
+#define TRACING_INC
 
 //! This structure is copied from Hookfinder.
 typedef struct {
@@ -8,7 +26,7 @@ typedef struct {
 	union {
 		// What is this ?
     	struct {
-			int   is_move;
+			int is_move;
 			uint32_t src_id[12];
 			uint32_t dst_id[4];
 		} prop;
@@ -48,9 +66,8 @@ void start_trace(char const * filename);
 //! Stop the running trace
 void stop_trace();
 
-//! Dump the trace record to a file
+//! Dump the trace record to a file, Hookfinder provide a trace reader to read this file
 void write_trace(trace_record_t * trec);
-void write_new_trace_record();
 
 #endif
 

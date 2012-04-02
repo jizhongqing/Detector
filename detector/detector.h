@@ -28,7 +28,7 @@ typedef struct {
 	// EIP register
 	uint32_t eip;
 	// Still trying to figure out what it is.
-	// uint32_t depend_id;
+	uint32_t depend_id;
 } taint_record_t;
 
 #endif   /* ----- #ifndef DETECTOR_INC  ----- */

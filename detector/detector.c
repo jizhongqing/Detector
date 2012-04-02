@@ -35,6 +35,7 @@
 #include <xed-interface.h>
 
 // Local headers
+#include "trace.h"
 #include "detector.h"
 #include "thread_info.hpp"
 
@@ -80,13 +81,16 @@ uint32_t checked_module_size = 0;
 //! Multi-thread, get from Hookfinder
 uint32_t current_thread_id = 0;
 //! Multi-thread, get from Hookfinder
-thread_info_t * current_thread_node = NULL;
+extern thread_info_t * current_thread_node = NULL;
 
 //! Address of the next-to-last instruction, get from Hookfinder
 uint32_t last_eip = 0;
 
 //! ID of the tainted keystroke which is sent to the guest os
 int taint_sendkey_id = 0;
+
+//! Still don't know what it is
+uint32_t depend_id = 1;
 
 //! Save the name of the requested module, prepare to monitor it
 void do_start_check(char const * name)
@@ -114,12 +118,14 @@ void do_taint_sendkey(char const * string, int id)
 
 //! User commands
 static term_cmd_t detector_term_cmds[] = {
-	{"check_module"	,	"s"	,	do_start_check	, "procname", "specify the name of module to be tested"		},
-	{"stop_check"	,	""	,	do_stop_check	, ""		, "stop finding return-oriented rootkit"		},
-	{"guest_ps"		,	""	,	list_procs		, ""		, "list the processes on guest system"			},
+	{"check_module"	, "s"	, do_start_check	, "procname"	, "specify the name of module to be tested"		},
+	{"stop_check"	, ""	, do_stop_check		, ""			, "stop finding return-oriented rootkit"		},
+	{"guest_ps"		, ""	, list_procs		, ""			, "list the processes on guest system"			},
+	{"start_trace"	, "s"	, start_trace		, "filename"	, "start tracing"								},
+	{"stop_trace"	, ""	, stop_trace		, ""			, "stop tracing"								},
 	//We don't need this yet
 	//{"taint_nic"	,	"i"	,	do_taint_nic	, "state"	, "set the network input to be tainted or not"	},
-	{"taint_sendkey",	"si",	do_taint_sendkey, "key&id"	, "send a tainted key to the guest system"		},
+	{"taint_sendkey", "si"	, do_taint_sendkey	, "key & id"	, "send a tainted key to the guest system"		},
 	// Terminator
 	{NULL, NULL},
 };
@@ -137,8 +143,8 @@ static void detector_send_keystroke(int reg)
 	// A tainted keystroke
 	if (taint_sendkey_id) {
 		bzero( &record, sizeof(record) );
+		record.depend_id = depend_id++;
 		taintcheck_taint_register(reg, 0, 1, 1, (unsigned char *) &record);
-
 		// Reset the tainted key
 		taint_sendkey_id = 0;
 	}
@@ -154,6 +160,111 @@ void detector_taint_propagate(	int nr_src,
 								taint_operand_t * dst_oprnd,
 								int mode	)
 {
+	taint_record_t *taint_record = NULL;
+
+  taint_record_t *tmp_rec;
+
+	// The trace will be stored nyaa
+	trace_record_t trace_rec;
+
+  	int src_index = 0, dst_index = 0;
+
+	// Prepare the record if the trace is on
+	if (tracelog) { prepare_trace_record( &trace_rec ); }
+
+	// Which mode is this ?
+	if (mode == PROP_MODE_MOVE) {
+		// Use the prop union
+		trace_rec.prop.is_move = 1;
+
+		if (nr_src == 1) {
+			// There is only one operand
+			for (int i = 0; i < src_oprnds[0].size; ++i) {
+				// What the f**k is this ?
+				if (src_oprnds[0].taint & (1 << i)) {
+					taint_record_t * dst_rec = (taint_record_t *) dst_oprnd->records + i;
+					taint_record_t * src_rec = (taint_record_t *) src_oprnds[0].records + i;
+					memmove(dst_rec, src_rec, sizeof(taint_record_t));
+
+					if (tracelog) {
+            			trace_rec.prop.src_id[ src_index++ ] = src_rec->depend_id;
+					}
+
+					dst_rec->depend_id = depend_id++;
+
+					if (tracelog) {
+						trace_rec.prop.dst_id[ dst_index++ ] = dst_rec->depend_id;
+					}
+        		}
+			}
+
+			if (tracelog) {
+				// Check the type of the operand
+				if (dst_oprnd->type == OPERAND_MEM) {
+					// Get the content of A0 register
+					TEMU_read_register(a0_reg, &(trace_rec.mem_addr));
+					// Get the content of what register ?
+					TEMU_read_register(src_oprnds[ 0 ].addr >> 2, &(trace_rec.mem_val));
+
+					taint_record_t tmp;
+                    if (taintcheck_register_check(a0_reg, 0, 1, (uint8_t *) & tmp)) {
+						trace_rec.address_id = tmp.depend_id;
+					}
+		        }
+			}
+
+			// Dump the trace
+			if (tracelog) { write_trace(&trace_rec); }
+			// and it's done
+			return;
+		}
+	}
+
+  /* deal with multiple sources */
+  if (tracelog)
+    trace_rec.prop.is_move = 0;
+
+  for (i = 0; i < nr_src; i++) {
+    if (src_oprnds[i].taint == 0)
+      continue;
+
+    for (j = 0; j < src_oprnds[i].size; j++)
+      if (src_oprnds[i].taint & (1 << j)) {
+        tmp_rec = (taint_record_t *) src_oprnds[i].records + j;
+        if (!taint_record) {
+          taint_record = tmp_rec;
+          if (!tracelog)
+            goto copy_taint_record;
+        }
+
+        if (tracelog)
+          trace_rec.prop.src_id[src_index++] = tmp_rec->depend_id;
+      }
+  }
+
+  if (!taint_record)
+    return;
+
+copy_taint_record:
+
+  for (i = 0; i < dst_oprnd->size; i++) {
+    dst_rec = (taint_record_t *) dst_oprnd->records + i;
+    memmove(dst_rec, taint_record, sizeof(taint_record_t));
+    dst_rec->depend_id = cur_depend_id++;
+    if (tracelog) {
+      trace_rec.prop.dst_id[dst_index++] = dst_rec->depend_id;
+    }
+  }
+
+  if (tracelog) {
+    /*if(dst_oprnd->type == 0) {
+       trace_rec.prop.dst_reg = dst_oprnd->addr>>2;
+       trace_rec.prop.dst_val = TEMU_cpu_regs[trace_rec.prop.dst_reg];
+       } */
+    write_trace(&trace_rec);
+  }
+
+
 	// Do nothing, just use the default policy
 	default_taint_propagate(nr_src, src_oprnds, dst_oprnd, mode);
 }

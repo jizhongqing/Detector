@@ -1,3 +1,21 @@
+/*
+ * =====================================================================================
+ *
+ *       Filename:  thread_info.cpp
+ *
+ *    Description:	Thread information, copied from Hookfinder
+ *
+ *        Version:  1.0
+ *        Created:  04/02/2012 05:06:55 PM
+ *       Revision:  none
+ *       Compiler:  gcc
+ *
+ *         Author:  Do Hoang Nhat Huy
+ *        Company:
+ *
+ * =====================================================================================
+ */
+
 #include <map>
 #include <string>
 #include <cassert>

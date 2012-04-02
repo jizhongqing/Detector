@@ -1,85 +1,89 @@
-#include "config.h"
-#include <inttypes.h>
+/*
+ * =====================================================================================
+ *
+ *       Filename:  trace.c
+ *
+ *    Description:	Trace, copied from Hookfinder
+ *
+ *        Version:  1.0
+ *        Created:  04/02/2012 05:07:52 PM
+ *       Revision:  none
+ *       Compiler:  gcc
+ *
+ *         Author:  Do Hoang Nhat Huy
+ *        Company:
+ *
+ * =====================================================================================
+ */
+
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <inttypes.h>
 #include <sys/user.h>
 #include <sys/time.h>
-#include <unistd.h>
-#include "TEMU_main.h"
-#include "tracing.h"
-#include "hookfinder.h"
 
-extern FILE * tracelog = 0;
+extern FILE * tracelog = NULL;
 
-void term_printf(const char *fmt, ...);
-
-void prepare_trace_record(trace_record_t *trec)
+void prepare_trace_record(trace_record_t * trec)
 {
-  bzero(trec, sizeof(trace_record_t));
-  trec->is_new = 0;
-  trec->eip = *TEMU_cpu_eip;
-  TEMU_read_mem(*TEMU_cpu_eip, 16, trec->raw_insn);
-  if (current_thread_node) {
-    trec->caller = current_thread_node->eip;
-    trec->callee = current_thread_node->entry_eip;
-    trec->esp = current_thread_node->esp; //FIXME: this should be the esp on function entry
-  }
-}
+	bzero(trec, sizeof(trace_record_t));
+	// What is this field ?
+	trec->is_new = 0;
+	// Get the value of EIP register
+	TEMU_read_register(eip_reg, &(trec->eip));
+	// Get the value of ESP register
+	TEMU_read_register(esp_reg, &(trec->esp));
 
+	// Fetch the raw instruction
+	TEMU_read_mem(trec->eip, 16, trec->raw_insn);
+
+	// Don't know much about this step, just keep it
+	if (current_thread_node) {
+		trec->caller = current_thread_node->eip;
+		trec->callee = current_thread_node->entry_eip;
+
+		// FIXME: this should be the esp on function entry
+		trec->esp = current_thread_node->esp;
+	}
+}
 
 void write_trace(trace_record_t *trec)
 {
-  fwrite(trec, 1, sizeof(trace_record_t), tracelog);
+	// Just fump the binary record
+	fwrite(trec, 1, sizeof(trace_record_t), tracelog);
 }
 
-void write_new_trace_record(taint_record_t *records, int size, uint32_t val)
+void start_trace(char const * filename)
 {
-  int i;
-  trace_record_t trace_rec;
-  taint_record_t taint_rec;
-  bzero(&trace_rec, sizeof(trace_rec));
-  trace_rec.is_new = 1;
-  for(i=0; i<size; i++)
-	trace_rec.define.dst_id[i] = records[i].depend_id;
+	if (tracelog) {
+		// Self explainatory
+		term_printf("tracing is already started!\n");
+		return ;
+	}
 
-  trace_rec.eip = *TEMU_cpu_eip;
-  if(current_thread_node)
-    trace_rec.esp = current_thread_node->esp;
-  trace_rec.caller = records[0].caller;
-  trace_rec.callee = records[0].callee;
-  trace_rec.mem_addr = TEMU_cpu_regs[R_A0];
-  trace_rec.mem_val = val;
+	tracelog = fopen(filename, "w");
 
-  if(taintcheck_register_check(R_A0, 0, 1, (uint8_t*)(&taint_rec)))
-	trace_rec.address_id = taint_rec.depend_id;
-  TEMU_read_mem(*TEMU_cpu_eip, 16, trace_rec.raw_insn);
-  write_trace(&trace_rec);
-}
+	// Cannot open the trace log, report as error
+	if (NULL == tracelog) {
+		// Self explainatory
+		term_printf("failed to open %s!\n", filename);
+		return;
+	}
 
-void start_trace(const char *filename)
-{
-  if (tracelog) {
-	term_printf("Tracing is already started!\n");
+	// Done
+	term_printf("tracing is started successfully!\n");
 	return;
-  }
-
-  tracelog = fopen(filename, "w");
-  if (0 == tracelog) {
-	term_printf("Failed to open %s! \n", filename);
-    return;
-  }
-
-  term_printf("Tracing is started successfully!\n");
-  return;
 }
-
 
 void stop_trace()
 {
-  if (tracelog) {
-    fclose(tracelog);
-    tracelog = 0;
-    term_printf("tracing has been stopped!\n");
-  }
+	if (tracelog) {
+		fclose(tracelog);
+		// Reset the tracelog handle
+		tracelog = NULL;
+		// Done
+		term_printf("tracing has been stopped!\n");
+	}
 }
 

@@ -1,5 +1,23 @@
-#ifndef THREAD_INFO_H_INCLUDED
-#define THREAD_INFO_H_INCLUDED
+/*
+ * =====================================================================================
+ *
+ *       Filename:  thread_info.hpp
+ *
+ *    Description:	Thread information, copied from Hookfinder
+ *
+ *        Version:  1.0
+ *        Created:  04/02/2012 05:06:08 PM
+ *       Revision:  none
+ *       Compiler:  gcc
+ *
+ *         Author:  Do Hoang Nhat Huy
+ *        Company:
+ *
+ * =====================================================================================
+ */
+
+#ifndef THREAD_INFO_INC
+#define THREAD_INFO_INC
 
 //! Everything about a thread
 typedef struct {
