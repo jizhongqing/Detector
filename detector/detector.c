@@ -109,7 +109,7 @@ void do_start_check(char const * name)
 }
 
 //! Stop monitor the current process
-static void do_stop_check(void)
+void do_stop_check(void)
 {
 	monitored_proc[ 0 ] = 0x00;
 	// Print the message to TEMU terminal
@@ -145,7 +145,7 @@ static term_cmd_t detector_info_cmds[] = {
 };
 
 //! What will happen when TEMU send the keystroke to the guest os
-static void detector_send_keystroke(int reg)
+void detector_send_keystroke(int reg)
 {
 	taint_record_t record;
 	// A tainted keystroke
@@ -266,7 +266,10 @@ _copy:
 		}
 	}
 
+	// Save the trace for later use
 	if (tracelog) { write_trace(&trace_rec); }
+	// Print the trace record for debug
+	if (inshandle) { print_trace_record(&trace_rec); }
 
 	// Do nothing, just use the default policy
 	default_taint_propagate(nr_src, src_oprnds, dst_oprnd, mode);
@@ -422,7 +425,7 @@ _finished:
 }
 
 //! This callback is invoked for every instruction
-static void detector_insn_begin()
+void detector_insn_begin()
 {
 	// if this is not the process we want to monitor, return immediately
 	if (in_checked_module == LOC_NOWHERE) return;
@@ -479,7 +482,7 @@ void print_trace_record(trace_record_t * rec)
 		// Convert to intel format (or AT/T)
 		xed_format_intel(&xdecode, asm_buf, sizeof(asm_buf), rec->eip);
 		// Dump the string
-		printf("%s\n", asm_buf);
+		fprintf(inshandle, "%s\n", asm_buf);
 	}
 }
 
