@@ -65,13 +65,8 @@ xed_state_t xed_state;
 
 //! Handle to the queue log
 FILE * loghandle		= NULL;
-//! Name of the queue log
-char const * logfile	= "detector.log";
-
 //! Handle to the instruction sequence file
 FILE * inshandle		= NULL;
-//! Name of the instruction sequence file
-char const * insfile	= "instructions.log";
 
 //! This is the main interface of a plugin
 static plugin_interface_t interface;
@@ -144,6 +139,49 @@ static term_cmd_t detector_info_cmds[] = {
 	{NULL, NULL},
 };
 
+//! Print the trace record in human readable format
+void print_trace_record(trace_record_t * rec)
+{
+	// XED decoder handle
+	xed_decoded_inst_t xdecode;
+
+	/*
+	if (rec->is_new) {
+		// What is new ?
+		fprintf(	inshandle,
+					"[new] eip=%08x esp=%08x caller=%08x callee=%08x M[%08x]=%08x\n",
+					rec->eip, rec->esp,
+					rec->caller, rec->callee,
+					rec->mem_addr, rec->mem_val	);
+	} else {
+		// Sure, i know things are old if they are not new
+		fprintf(	inshandle,
+					"[old] eip=%08x esp=%08x caller=%08x callee=%08x is_move=%d\n",
+					rec->eip, rec->esp,
+					rec->caller, rec->callee,
+					rec->prop.is_move	);
+
+		if (rec->mem_addr) {
+			printf("    M[%08x]=%08x\n", rec->mem_addr, rec->mem_val);
+		}
+	}
+	*/
+
+	// The human-readable string will be stored nyaa
+	char asm_buf[128];
+
+	xed_decoded_inst_zero_set_mode(&xdecode, &xed_state);
+	// Convert to human-readable format using XED
+	xed_error_enum_t xed_error = xed_decode(&xdecode, rec->raw_insn, 16);
+	// Correct instruction
+	if (xed_error == XED_ERROR_NONE) {
+		// Convert to intel format (or AT/T)
+		xed_format_intel(&xdecode, asm_buf, sizeof(asm_buf), rec->eip);
+		// Dump the string
+		fprintf(inshandle, "%s\n", asm_buf);
+	}
+}
+
 //! What will happen when TEMU send the keystroke to the guest os
 void detector_send_keystroke(int reg)
 {
@@ -180,7 +218,7 @@ void detector_taint_propagate(	int nr_src,
 	// Which mode is this ?
 	if (mode == PROP_MODE_MOVE) {
 		// Use the prop union
-		trace_rec.prop.is_move = 1;
+		trace_rec.meme.prop.is_move = 1;
 
 		if (nr_src == 1) {
 			// There is only one operand
@@ -192,13 +230,13 @@ void detector_taint_propagate(	int nr_src,
 					memmove(dst_rec, src_rec, sizeof(taint_record_t));
 
 					if (tracelog) {
-            			trace_rec.prop.src_id[ src_index++ ] = src_rec->depend_id;
+            			trace_rec.meme.prop.src_id[ src_index++ ] = src_rec->depend_id;
 					}
 
 					dst_rec->depend_id = depend_id++;
 
 					if (tracelog) {
-						trace_rec.prop.dst_id[ dst_index++ ] = dst_rec->depend_id;
+						trace_rec.meme.prop.dst_id[ dst_index++ ] = dst_rec->depend_id;
 					}
         		}
 			}
@@ -207,12 +245,12 @@ void detector_taint_propagate(	int nr_src,
 				// Check the type of the operand
 				if (dst_oprnd->type == OPERAND_MEM) {
 					// Get the content of A0 register
-					TEMU_read_register(a0_reg, &(trace_rec.mem_addr));
+					trace_rec.mem_addr = TEMU_cpu_regs[ R_A0 ];
 					// Get the content of what register ?
-					TEMU_read_register(src_oprnds[ 0 ].addr >> 2, &(trace_rec.mem_val));
+					trace_rec.mem_val  = TEMU_cpu_regs[ src_oprnds[0].addr >> 2 ];
 
 					taint_record_t tmp;
-                    if (taintcheck_register_check(a0_reg, 0, 1, (uint8_t *) & tmp)) {
+					if (taintcheck_register_check(R_A0, 0, 1, (uint8_t *) & tmp)) {
 						trace_rec.address_id = tmp.depend_id;
 					}
 		        }
@@ -227,7 +265,7 @@ void detector_taint_propagate(	int nr_src,
 
 	// Deal with multiple sources
 	if (tracelog) {
-    	trace_rec.prop.is_move = 0;
+    	trace_rec.meme.prop.is_move = 0;
 	}
 
 	for (int i = 0; i < nr_src; ++i) {
@@ -244,7 +282,7 @@ void detector_taint_propagate(	int nr_src,
         		}
 
 				if (tracelog) {
-					trace_rec.prop.src_id[ src_index++ ] = tmp->depend_id;
+					trace_rec.meme.prop.src_id[ src_index++ ] = tmp->depend_id;
 				}
       		}
   		}
@@ -262,7 +300,7 @@ _copy:
 		dst_rec->depend_id = depend_id++;
 
 		if (tracelog) {
-			trace_rec.prop.dst_id[ dst_index++ ] = dst_rec->depend_id;
+			trace_rec.meme.prop.dst_id[ dst_index++ ] = dst_rec->depend_id;
 		}
 	}
 
@@ -443,49 +481,6 @@ void detector_insn_begin()
 	TEMU_read_mem(eip, 16, raw_insn);
 }
 
-//! Print the trace record in human readable format
-void print_trace_record(trace_record_t * rec)
-{
-	// XED decoder handle
-	xed_decoded_inst_t xdecode;
-
-	/*
-	if (rec->is_new) {
-		// What is new ?
-		fprintf(	inshandle,
-					"[new] eip=%08x esp=%08x caller=%08x callee=%08x M[%08x]=%08x\n",
-					rec->eip, rec->esp,
-					rec->caller, rec->callee,
-					rec->mem_addr, rec->mem_val	);
-	} else {
-		// Sure, i know things are old if they are not new
-		fprintf(	inshandle,
-					"[old] eip=%08x esp=%08x caller=%08x callee=%08x is_move=%d\n",
-					rec->eip, rec->esp,
-					rec->caller, rec->callee,
-					rec->prop.is_move	);
-
-		if (rec->mem_addr) {
-			printf("    M[%08x]=%08x\n", rec->mem_addr, rec->mem_val);
-		}
-	}
-	*/
-
-	// The human-readable string will be stored nyaa
-	char asm_buf[32];
-
-	xed_decoded_inst_zero_set_mode(&xdecode, &xed_state);
-	// Convert to human-readable format using XED
-	xed_error_enum_t xed_error = xed_decode(&xdecode, rec->raw_insn, 16);
-	// Correct instruction
-	if (xed_error == XED_ERROR_NONE) {
-		// Convert to intel format (or AT/T)
-		xed_format_intel(&xdecode, asm_buf, sizeof(asm_buf), rec->eip);
-		// Dump the string
-		fprintf(inshandle, "%s\n", asm_buf);
-	}
-}
-
 //! Cleanup
 void detector_cleanup()
 {
@@ -509,6 +504,11 @@ void detector_cleanup()
 //! Standard callback function - Initialize the plugin interface
 plugin_interface_t * init_plugin()
 {
+	// Name of the queue log
+	char const * logfile	= "detector.log";
+	// Name of the instruction sequence file
+	char const * insfile	= "instructions.log";
+
 	// Fail to create the plugin log
 	if (!(loghandle = fopen(logfile, "w"))) {
 		fprintf(stderr, "cannot create %s\n", logfile);

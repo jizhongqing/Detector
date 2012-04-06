@@ -35,7 +35,7 @@ typedef struct {
 		struct {
 			uint32_t dst_id[4];
 		} define;
-	};
+	} meme;
 
 	// EIP
 	uint32_t eip;

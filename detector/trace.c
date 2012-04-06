@@ -38,10 +38,10 @@
 #include "thread_info.hpp"
 
 //! Multi-thread, get from Hookfinder
-thread_info_t * current_thread_node = NULL;
+extern thread_info_t * current_thread_node;
 
 //! Handle to the trace file
-FILE * tracelog = NULL;
+extern FILE * tracelog;
 
 void prepare_trace_record(trace_record_t * trec)
 {
