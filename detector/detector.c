@@ -145,28 +145,6 @@ void print_trace_record(trace_record_t * rec)
 	// XED decoder handle
 	xed_decoded_inst_t xdecode;
 
-	/*
-	if (rec->is_new) {
-		// What is new ?
-		fprintf(	inshandle,
-					"[new] eip=%08x esp=%08x caller=%08x callee=%08x M[%08x]=%08x\n",
-					rec->eip, rec->esp,
-					rec->caller, rec->callee,
-					rec->mem_addr, rec->mem_val	);
-	} else {
-		// Sure, i know things are old if they are not new
-		fprintf(	inshandle,
-					"[old] eip=%08x esp=%08x caller=%08x callee=%08x is_move=%d\n",
-					rec->eip, rec->esp,
-					rec->caller, rec->callee,
-					rec->prop.is_move	);
-
-		if (rec->mem_addr) {
-			printf("    M[%08x]=%08x\n", rec->mem_addr, rec->mem_val);
-		}
-	}
-	*/
-
 	// The human-readable string will be stored nyaa
 	char asm_buf[128];
 
@@ -176,10 +154,95 @@ void print_trace_record(trace_record_t * rec)
 	// Correct instruction
 	if (xed_error == XED_ERROR_NONE) {
 		// Convert to intel format (or AT/T)
-		xed_format_intel(&xdecode, asm_buf, sizeof(asm_buf), rec->eip);
+		xed_format_att(&xdecode, asm_buf, sizeof(asm_buf), rec->eip);
 		// Dump the string
 		fprintf(inshandle, "%s\n", asm_buf);
 	}
+
+	uint32_t eip;
+	TEMU_read_register(eip_reg, &eip);
+
+	uint32_t esp, ebp, esi, edi;
+	TEMU_read_register(esp_reg, &esp);
+	TEMU_read_register(ebp_reg, &ebp);
+	TEMU_read_register(esi_reg, &esi);
+	TEMU_read_register(edi_reg, &edi);
+
+	uint32_t eax, ebx, ecx, edx;
+	TEMU_read_register(eax_reg, &eax);
+	TEMU_read_register(ebx_reg, &ebx);
+	TEMU_read_register(ecx_reg, &ecx);
+	TEMU_read_register(edx_reg, &edx);
+
+	uint32_t sp, bp, si, di;
+	TEMU_read_register(sp_reg, &sp);
+	TEMU_read_register(bp_reg, &bp);
+	TEMU_read_register(si_reg, &si);
+	TEMU_read_register(di_reg, &di);
+
+	uint32_t ax, bx, cx, dx;
+	TEMU_read_register(ax_reg, &ax);
+	TEMU_read_register(bx_reg, &bx);
+	TEMU_read_register(cx_reg, &cx);
+	TEMU_read_register(dx_reg, &dx);
+
+	uint32_t al, bl, cl, dl;
+	TEMU_read_register(al_reg, &al);
+	TEMU_read_register(bl_reg, &bl);
+	TEMU_read_register(cl_reg, &cl);
+	TEMU_read_register(dl_reg, &dl);
+
+	uint32_t ah, bh, ch, dh;
+	TEMU_read_register(ah_reg, &ah);
+	TEMU_read_register(bh_reg, &bh);
+	TEMU_read_register(ch_reg, &ch);
+	TEMU_read_register(dh_reg, &dh);
+
+	// EIP
+	fprintf(inshandle, "eip:%08x\n", eip);
+	// ESP
+	fprintf(inshandle, "esp:%08x\n", esp);
+	fprintf(inshandle, "sp:%08x\n", sp);
+	// EBP
+	fprintf(inshandle, "ebp:%08x\n", ebp);
+	fprintf(inshandle, "bp:%08x\n", bp);
+	// ESI
+	fprintf(inshandle, "esi:%08x\n", esi);
+	fprintf(inshandle, "si:%08x\n", si);
+	// EDI
+	fprintf(inshandle, "edi:%08x\n", edi);
+	fprintf(inshandle, "di:%08x\n", di);
+	// EAX
+	fprintf(inshandle, "eax:%08x\n", eax);
+	fprintf(inshandle, "ax:%08x\n", ax);
+	fprintf(inshandle, "ah:%08x\n", ah);
+	fprintf(inshandle, "al:%08x\n", al);
+	// EBX
+	fprintf(inshandle, "ebx:%08x\n", ebx);
+	fprintf(inshandle, "bx:%08x\n", bx);
+	fprintf(inshandle, "bh:%08x\n", bh);
+	fprintf(inshandle, "bl:%08x\n", bl);
+	// ECX
+	fprintf(inshandle, "ecx:%08x\n", ecx);
+	fprintf(inshandle, "cx:%08x\n", cx);
+	fprintf(inshandle, "ch:%08x\n", ch);
+	fprintf(inshandle, "cl:%08x\n", cl);
+	// EDX
+	fprintf(inshandle, "edx:%08x\n", edx);
+	fprintf(inshandle, "dx:%08x\n", dx);
+	fprintf(inshandle, "dh:%08x\n", dh);
+	fprintf(inshandle, "dl:%08x\n", dl);
+
+	// Call
+	fprintf(inshandle, "call:%08x\n", rec->callee);
+	// Jump
+	fprintf(inshandle, "jump:%08x\n", rec->mem_addr);
+	fprintf(inshandle, "jump:%08x\n", rec->mem_val);
+
+	// Separator
+	fprintf(inshandle, "\n");
+
+
 }
 
 //! What will happen when TEMU send the keystroke to the guest os
