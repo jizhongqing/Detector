@@ -60,8 +60,13 @@ char current_proc[512]	 = "";
 //! Name of the monitored process, the one we care about
 char monitored_proc[512] = "";
 
+//! Fudge off
+int should_monitor = 0;
+//! Counting
+uint32_t insn_index = 0;
+
 //! XED2 handle
-xed_state_t xed_state;
+// xed_state_t xed_state;
 
 //! Handle to the queue log
 FILE * loghandle		= NULL;
@@ -140,109 +145,66 @@ static term_cmd_t detector_info_cmds[] = {
 };
 
 //! Print the trace record in human readable format
-void print_trace_record(trace_record_t * rec)
+void print_trace_record()
 {
+	// Everything will be store here
+	insn_record_t tmp;
+
+	// Get the value of EIP register
+	TEMU_read_register(eip_reg, &(tmp.eip));
+	// Fetch the raw instruction
+	TEMU_read_mem(tmp.eip, 16, tmp.raw_insn);
+
+	/*
 	// XED decoder handle
 	xed_decoded_inst_t xdecode;
 
-	// The human-readable string will be stored nyaa
-	char asm_buf[128];
-
 	xed_decoded_inst_zero_set_mode(&xdecode, &xed_state);
 	// Convert to human-readable format using XED
-	xed_error_enum_t xed_error = xed_decode(&xdecode, rec->raw_insn, 16);
+	xed_error_enum_t xed_error = xed_decode(&xdecode, raw_insn, 16);
 	// Correct instruction
 	if (xed_error == XED_ERROR_NONE) {
 		// Convert to intel format (or AT/T)
-		xed_format_att(&xdecode, asm_buf, sizeof(asm_buf), rec->eip);
-		// Dump the string
-		fprintf(inshandle, "%s\n", asm_buf);
+		// xed_format_att(&xdecode, tmp.asm_buf, sizeof(tmp.asm_buf), tmp.eip);
 	}
+	*/
 
-	uint32_t eip;
-	TEMU_read_register(eip_reg, &eip);
+	TEMU_read_register(esp_reg, &(tmp.esp));
+	TEMU_read_register(ebp_reg, &(tmp.ebp));
+	TEMU_read_register(esi_reg, &(tmp.esi));
+	TEMU_read_register(edi_reg, &(tmp.edi));
 
-	uint32_t esp, ebp, esi, edi;
-	TEMU_read_register(esp_reg, &esp);
-	TEMU_read_register(ebp_reg, &ebp);
-	TEMU_read_register(esi_reg, &esi);
-	TEMU_read_register(edi_reg, &edi);
+	TEMU_read_register(eax_reg, &(tmp.eax));
+	TEMU_read_register(ebx_reg, &(tmp.ebx));
+	TEMU_read_register(ecx_reg, &(tmp.ecx));
+	TEMU_read_register(edx_reg, &(tmp.edx));
 
-	uint32_t eax, ebx, ecx, edx;
-	TEMU_read_register(eax_reg, &eax);
-	TEMU_read_register(ebx_reg, &ebx);
-	TEMU_read_register(ecx_reg, &ecx);
-	TEMU_read_register(edx_reg, &edx);
+	TEMU_read_register(sp_reg, &(tmp.sp));
+	TEMU_read_register(bp_reg, &(tmp.bp));
+	TEMU_read_register(si_reg, &(tmp.si));
+	TEMU_read_register(di_reg, &(tmp.di));
 
-	uint32_t sp, bp, si, di;
-	TEMU_read_register(sp_reg, &sp);
-	TEMU_read_register(bp_reg, &bp);
-	TEMU_read_register(si_reg, &si);
-	TEMU_read_register(di_reg, &di);
+	TEMU_read_register(ax_reg, &(tmp.ax));
+	TEMU_read_register(bx_reg, &(tmp.bx));
+	TEMU_read_register(cx_reg, &(tmp.cx));
+	TEMU_read_register(dx_reg, &(tmp.dx));
 
-	uint32_t ax, bx, cx, dx;
-	TEMU_read_register(ax_reg, &ax);
-	TEMU_read_register(bx_reg, &bx);
-	TEMU_read_register(cx_reg, &cx);
-	TEMU_read_register(dx_reg, &dx);
+	TEMU_read_register(al_reg, &(tmp.al));
+	TEMU_read_register(bl_reg, &(tmp.bl));
+	TEMU_read_register(cl_reg, &(tmp.cl));
+	TEMU_read_register(dl_reg, &(tmp.dl));
 
-	uint32_t al, bl, cl, dl;
-	TEMU_read_register(al_reg, &al);
-	TEMU_read_register(bl_reg, &bl);
-	TEMU_read_register(cl_reg, &cl);
-	TEMU_read_register(dl_reg, &dl);
+	TEMU_read_register(ah_reg, &(tmp.ah));
+	TEMU_read_register(bh_reg, &(tmp.bh));
+	TEMU_read_register(ch_reg, &(tmp.ch));
+	TEMU_read_register(dh_reg, &(tmp.dh));
 
-	uint32_t ah, bh, ch, dh;
-	TEMU_read_register(ah_reg, &ah);
-	TEMU_read_register(bh_reg, &bh);
-	TEMU_read_register(ch_reg, &ch);
-	TEMU_read_register(dh_reg, &dh);
+	TEMU_read_mem(tmp.esp, 4, &(tmp.tos));
 
-	// EIP
-	fprintf(inshandle, "eip:%08x\n", eip);
-	// ESP
-	fprintf(inshandle, "esp:%08x\n", esp);
-	fprintf(inshandle, "sp:%08x\n", sp);
-	// EBP
-	fprintf(inshandle, "ebp:%08x\n", ebp);
-	fprintf(inshandle, "bp:%08x\n", bp);
-	// ESI
-	fprintf(inshandle, "esi:%08x\n", esi);
-	fprintf(inshandle, "si:%08x\n", si);
-	// EDI
-	fprintf(inshandle, "edi:%08x\n", edi);
-	fprintf(inshandle, "di:%08x\n", di);
-	// EAX
-	fprintf(inshandle, "eax:%08x\n", eax);
-	fprintf(inshandle, "ax:%08x\n", ax);
-	fprintf(inshandle, "ah:%08x\n", ah);
-	fprintf(inshandle, "al:%08x\n", al);
-	// EBX
-	fprintf(inshandle, "ebx:%08x\n", ebx);
-	fprintf(inshandle, "bx:%08x\n", bx);
-	fprintf(inshandle, "bh:%08x\n", bh);
-	fprintf(inshandle, "bl:%08x\n", bl);
-	// ECX
-	fprintf(inshandle, "ecx:%08x\n", ecx);
-	fprintf(inshandle, "cx:%08x\n", cx);
-	fprintf(inshandle, "ch:%08x\n", ch);
-	fprintf(inshandle, "cl:%08x\n", cl);
-	// EDX
-	fprintf(inshandle, "edx:%08x\n", edx);
-	fprintf(inshandle, "dx:%08x\n", dx);
-	fprintf(inshandle, "dh:%08x\n", dh);
-	fprintf(inshandle, "dl:%08x\n", dl);
+	// Dump the struct
+	fwrite(&tmp, sizeof(insn_record_t), 0x01, inshandle);
 
-	// Call
-	fprintf(inshandle, "call:%08x\n", rec->callee);
-	// Jump
-	fprintf(inshandle, "jump:%08x\n", rec->mem_addr);
-	fprintf(inshandle, "jump:%08x\n", rec->mem_val);
-
-	// Separator
-	fprintf(inshandle, "\n");
-
-
+	return ;
 }
 
 //! What will happen when TEMU send the keystroke to the guest os
@@ -369,11 +331,9 @@ _copy:
 
 	// Save the trace for later use
 	if (tracelog) { write_trace(&trace_rec); }
-	// Print the trace record for debug
-	if (inshandle) { print_trace_record(&trace_rec); }
 
 	// Do nothing, just use the default policy
-	default_taint_propagate(nr_src, src_oprnds, dst_oprnd, mode);
+	// default_taint_propagate(nr_src, src_oprnds, dst_oprnd, mode);
 }
 
 /*!
@@ -405,9 +365,6 @@ void detector_guest_message(char * message)
  */
 int detector_block_begin()
 {
-	// We care for nothing
-	if (monitored_proc[0] == 0) { goto _finished; }
-
 	uint32_t eip, esp, cr3;
 	// Get the value of EIP register
 	TEMU_read_register(eip_reg, &eip);
@@ -418,108 +375,22 @@ int detector_block_begin()
 
 	// Get the current process using the above registers
 	tmodinfo_t * mi = locate_module(eip, cr3, current_proc);
-	// Get the current working module inside the current process
-	strcpy(current_mod, mi ? mi->name : "<unknown>");
 
-	if (0x00 == strcasecmp(current_mod, monitored_proc)) {
-		// Save the base address
-		checked_module_base = mi->base;
-		// Save the size
-		checked_module_size = mi->size;
+	// Fudge off
+	should_monitor = (strcasecmp(current_proc, monitored_proc) == 0);
 
+	// The module we care about
+	if (should_monitor) {
 		// We are inside the monitored module
 		in_checked_module = LOC_INSIDE;
-		goto _handle;
+	} else {
+		in_checked_module = LOC_NOWHERE;
 	}
 
-	uint32_t phys_addr = TEMU_get_phys_addr(eip);
-
-	// Check what ?
-	taint_record_t records[0x04];
-	uint64_t taint = taintcheck_memory_check(phys_addr, 1, (uint8_t *) records);
-
-	if (taint) {
-		// This may be generated code
-		in_checked_module = LOC_GEN;
-		// Log
-		fprintf( loghandle,
-				 "Tainted code: %s!%s eip=%08x\n",
-				 current_proc,
-                 mi ? mi->name: "<unknown>",
-				 eip);
-
-		goto _handle;
-    }
-
-	// Get the id of the current thread
-	current_thread_id = get_current_tid();
-	// Get the information about the current thread
-	current_thread_node = (current_thread_id != -1UL) ? get_thread_info(current_thread_id) : NULL;
-
-	// In system call
-	if (current_thread_node) {
-		if (current_thread_node->origin == 1 || current_thread_node->origin == 2) {
-			// Jump out of malicious code
-			if (((current_thread_node->esp & 0x80000000) == (esp & 0x80000000)) &&
-				(current_thread_node->esp < esp))
-			{
-				// Return from malware
-				delete_thread_info(current_thread_id);
-				current_thread_node = NULL;
-        		goto _finished;
-			}
-
-			if (((current_thread_node->esp & 0x80000000) == (esp & 0x80000000))	&&
-				(current_thread_node->esp > esp))
-			{
-				// External call - set the caller
-				current_thread_node->entry_eip = eip;
-				// Follow the Hookfinder style
-        		current_thread_node->origin = 3;
-
-				goto _finished;
-      		}
-    	}
-  	}
-
-	// Skip the rest
-	goto _finished;
-
-_handle:
-	// This is not the monitored process
-  	if(current_thread_id == -1UL) {
-		goto _finished;
-	}
-
-	// Set the current thread info
-	if (! current_thread_node) {
-		thread_info_t info;
-		// Zero-out
-		bzero( &info, sizeof(info) );
-		// Set its members
-		info.cr3 = cr3;
-		info.esp = esp;
-		// Why set its value to 0 ?
-		info.eip = 0x00;
-		info.origin = (uint32_t)in_checked_module;
-		// Save the thread info
-		write_thread_info(current_thread_id, &info);
-		// and refer to the newly updated current thread
-		current_thread_node = get_thread_info(current_thread_id);
-  	}
-
-	current_thread_node->eip = 0;
-	current_thread_node->out_eip = 0;
-	current_thread_node->entry_eip = 0;
-	current_thread_node->origin = (uint32_t)in_checked_module;
-
-_finished:
 	//we should always check if there is a hook at this point,
 	//no matter we are in the monitored context or not, because
 	//some hooks are global.
 	hookapi_check_call(should_monitor);
-	// Thread ?
-	in_checked_module = current_thread_node ? (enum location_t)current_thread_node->origin : LOC_NOWHERE;
 
 	// Done
 	return 0;
@@ -529,7 +400,7 @@ _finished:
 void detector_insn_begin()
 {
 	// if this is not the process we want to monitor, return immediately
-	if (in_checked_module == LOC_NOWHERE) return;
+	if (! should_monitor) { return; }
 
 	// Now we can analyze this instruction.  In Hookfinder, they save the
 	// address of the next to last instruction
@@ -539,9 +410,10 @@ void detector_insn_begin()
 	// and get the next one
 	TEMU_read_register(eip_reg, &eip);
 
-	uint8_t raw_insn[16];
-	// Fetch the raw instruction
-	TEMU_read_mem(eip, 16, raw_insn);
+	// Print the trace record for debug
+	if (inshandle) {
+		print_trace_record();
+	}
 }
 
 //! Cleanup
@@ -562,6 +434,8 @@ void detector_cleanup()
 	fclose(inshandle);
 	// Reload
 	inshandle = NULL;
+	// Reload
+	insn_index = 0;
 }
 
 //! Standard callback function - Initialize the plugin interface
@@ -579,7 +453,7 @@ plugin_interface_t * init_plugin()
 	}
 
 	// Fail to create the instruction log
-	if (!(inshandle = fopen(insfile, "w"))) {
+	if (!(inshandle = fopen(insfile, "wb"))) {
 		fprintf(stderr, "cannot create %s\n", insfile);
 		return NULL;
 	}
@@ -603,11 +477,11 @@ plugin_interface_t * init_plugin()
 	// Check the following link for XED2 documentation
 	// www.cs.virginia.edu/kim/publicity/pin/docs/24110/Xed/html/main.html
 	// Init XED instruction table
-	xed_tables_init();
+	// xed_tables_init();
 	// Zero-out the structure ?
-	xed_state_zero( &xed_state );
+	// xed_state_zero( &xed_state );
 	// Update the XED2 structure with some pre-defined values
-	xed_state_init( &xed_state, XED_MACHINE_MODE_LEGACY_32, XED_ADDRESS_WIDTH_32b, XED_ADDRESS_WIDTH_32b);
+	// xed_state_init( &xed_state, XED_MACHINE_MODE_LEGACY_32, XED_ADDRESS_WIDTH_32b, XED_ADDRESS_WIDTH_32b);
 
 
 	// The following portion of code registers all the

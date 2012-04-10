@@ -20,8 +20,9 @@ OBJS=../shared/procmod.o ../shared/read_linux.o ../shared/hookapi.o ../shared/ho
 OBJS+=detector.o thread_info.o trace.o
 
 PLUGIN = detector.so
+READER = reader
 
-all: $(PLUGIN)
+all: $(PLUGIN) $(READER)
 
 %.o: %.c 
 	gcc -std=c99 $(CFLAGS) $(DEFINES) -c -o $@ $<
@@ -31,6 +32,9 @@ all: $(PLUGIN)
 
 $(PLUGIN): $(OBJS)
 	g++ $(LDFLAGS) $^ -o $@ $(LIBS)
+
+$(READER): reader.o
+	g++ $^ -o $@ $(LIBS) 
 
 clean:
 	rm -f *.o *.so *~ $(PLUGIN) ../shared/*.o 
